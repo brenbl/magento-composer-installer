@@ -364,6 +364,68 @@ abstract class MagentoInstallerAbstract extends LibraryInstaller implements Inst
         $deployManagerEntry->setPackageName($package->getName());
         $deployManagerEntry->setDeployStrategy($strategy);
         $this->deployManager->addPackage($deployManagerEntry);
+
+        if ($this->appendGitIgnore) {
+            $this->appendGitIgnore($package, $this->getGitIgnoreFileLocation());
+        }
+    }
+
+    /**
+     * Get .gitignore file location
+     *
+     * @return string
+     */
+    public function getGitIgnoreFileLocation()
+    {
+        $ignoreFile = $this->magentoRootDir->getPathname() . '/.gitignore';
+
+        return $ignoreFile;
+    }
+
+    /**
+     * Add all the files which are to be deployed
+     * to the .gitignore file, if it doesn't
+     * exist then create a new one
+     *
+     * @param PackageInterface $package
+     * @param string           $ignoreFile
+     */
+    public function appendGitIgnore(PackageInterface $package, $ignoreFile)
+    {
+        $contents = array();
+        if (file_exists($ignoreFile)) {
+            $contents = file($ignoreFile, FILE_IGNORE_NEW_LINES);
+        }
+
+        $additions = array();
+        foreach ($this->getParser($package)->getMappings() as $map) {
+
+            $source = $map[0];
+            $sourcePattern = $this->getSourceDir($package) . DIRECTORY_SEPARATOR . $source;
+            $destinations = glob($sourcePattern);
+
+            foreach($destinations as $dest){
+                $dest = str_replace($this->getSourceDir($package), '', $dest);
+                $ignore = sprintf("/%s", $dest);
+                $ignore = str_replace('/./', '/', $ignore);
+                $ignore = str_replace('//', '/', $ignore);
+                $ignore = rtrim($ignore, '/');
+                if (!in_array($ignore, $contents)) {
+                    $ignoredMappings = $this->getDeployStrategy($package)->getIgnoredMappings();
+                    if (in_array($ignore, $ignoredMappings)) {
+                        continue;
+                    }
+
+                    $additions[] = $ignore;
+                }
+            }
+        }
+
+        if (!empty($additions)) {
+            array_unshift($additions, '#' . $package->getName());
+            $contents = array_merge($contents, $additions);
+            file_put_contents($ignoreFile, implode("\n", $contents));
+        }
     }
 
     /**
